@@ -43,3 +43,29 @@ Temporary Items
 .idea/
 # ignore mkdocs build
 site/
+
+# ---- Managed Ignores >>>
+
+# VSCode
+**/.vscode
+**/.history
+**/.venv
+*.code-workspace
+
+# AYON
+**/package
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Node
+dist/
+node_modules/
+
+# Tooling
+/.ruff_cache
+# <<<  Managed Ignores ----
