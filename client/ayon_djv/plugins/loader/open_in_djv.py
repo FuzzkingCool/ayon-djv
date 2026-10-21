@@ -1,11 +1,7 @@
 import os
 import collections
-import time
 from typing import Optional, Any
 
-import clique
-
-from ayon_core.lib import run_detached_process
 from ayon_core.lib.transcoding import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from ayon_core.pipeline.load import get_representation_path_with_anatomy
 from ayon_core.pipeline.actions import (
@@ -15,7 +11,12 @@ from ayon_core.pipeline.actions import (
     LoaderActionResult,
 )
 
-from ayon_djv.utils import DJVExecutableCache
+from ayon_djv.utils import (
+    DJVExecutableCache,
+    is_djv_executable_available,
+    open_local_path_in_djv,
+    resolve_djv_sequence_entry_path,
+)
 
 
 class OpenInDJV(LoaderActionPlugin):
@@ -32,7 +33,7 @@ class OpenInDJV(LoaderActionPlugin):
     def get_action_items(
         self, selection: LoaderActionSelection
     ) -> list[LoaderActionItem]:
-        if not self.get_djv_path():
+        if not is_djv_executable_available():
             return []
 
         repres = []
@@ -114,48 +115,11 @@ class OpenInDJV(LoaderActionPlugin):
                 success=False,
             )
 
-        if not os.path.exists(repre_path):
-            return LoaderActionResult(
-                "File to open was not found...",
-                success=False,
-            )
-
-        directory = os.path.dirname(repre_path)
-        pattern = clique.PATTERNS["frames"]
-        files = os.listdir(directory)
-        collections, remainder = clique.assemble(
-            files,
-            patterns=[pattern],
-            minimum_items=1
+        filepath = resolve_djv_sequence_entry_path(repre_path)
+        if filepath:
+            self.log.info("Opening '%s'", filepath)
+        success, message = open_local_path_in_djv(
+            repre_path,
+            executable_cache=self._executable_cache,
         )
-
-        first_image = repre_path
-        if not remainder:
-            sequence = collections[0]
-            first_image = list(sequence)[0]
-        filepath = os.path.normpath(os.path.join(directory, first_image))
-
-        self.log.info(f"Opening '{filepath}'")
-
-        executable = self.get_djv_path()
-        if not executable:
-            return LoaderActionResult(
-                "Couldn't find DJV executable.",
-                success=False,
-            )
-
-        cmd = [
-            # DJV path
-            str(executable),
-            # PATH TO COMPONENT
-            filepath
-        ]
-        # Run DJV with these commands
-        run_detached_process(cmd)
-        # Keep process in memory for some time
-        time.sleep(0.1)
-
-        return LoaderActionResult(
-            "File opened in DJV...",
-            success=True,
-        )
+        return LoaderActionResult(message, success=success)
