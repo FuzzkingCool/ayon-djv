@@ -1,11 +1,17 @@
 import os
 import time
 import platform
+from typing import Optional, Tuple
 
 import ayon_api
+import clique
+
+from ayon_core.lib import run_detached_process
 
 from .version import __version__
 from .constants import ADDON_NAME
+
+_DEFAULT_EXECUTABLE_CACHE = None
 
 
 def get_djv_icon_url(server_url=None):
@@ -104,3 +110,66 @@ class DJVExecutableCache:
         if not self.is_cache_valid():
             self._djv_path = get_djv_executable_path(self.get_paths())
         return self._djv_path
+
+
+def _executable_cache() -> DJVExecutableCache:
+    global _DEFAULT_EXECUTABLE_CACHE
+    if _DEFAULT_EXECUTABLE_CACHE is None:
+        _DEFAULT_EXECUTABLE_CACHE = DJVExecutableCache()
+    return _DEFAULT_EXECUTABLE_CACHE
+
+
+def is_djv_executable_available() -> bool:
+    """Return True when addon settings resolve to an existing DJV executable."""
+    return bool(_executable_cache().get_path())
+
+
+def resolve_djv_sequence_entry_path(file_path: str) -> str:
+    """Pick the first frame path DJV should open for a file or sequence member."""
+    repre_path = os.path.normpath(str(file_path or "").strip())
+    if not repre_path:
+        return ""
+    if not os.path.exists(repre_path):
+        return ""
+    directory = os.path.dirname(repre_path)
+    if not directory or not os.path.isdir(directory):
+        return repre_path
+    pattern = clique.PATTERNS["frames"]
+    try:
+        files = os.listdir(directory)
+    except OSError:
+        return repre_path
+    collections, remainder = clique.assemble(
+        files,
+        patterns=[pattern],
+        minimum_items=1,
+    )
+    first_image = repre_path
+    if not remainder and collections:
+        sequence = collections[0]
+        first_image = list(sequence)[0]
+    return os.path.normpath(os.path.join(directory, first_image))
+
+
+def open_local_path_in_djv(
+    file_path: str,
+    *,
+    executable_cache: Optional[DJVExecutableCache] = None,
+) -> Tuple[bool, str]:
+    """Launch DJV for a local image sequence or video path.
+
+    Returns:
+        (success, user-facing message)
+    """
+    cache = executable_cache or _executable_cache()
+    executable = cache.get_path()
+    if not executable:
+        return False, "Couldn't find DJV executable."
+
+    filepath = resolve_djv_sequence_entry_path(file_path)
+    if not filepath or not os.path.exists(filepath):
+        return False, "File to open was not found..."
+
+    run_detached_process([str(executable), filepath])
+    time.sleep(0.1)
+    return True, "File opened in DJV..."
